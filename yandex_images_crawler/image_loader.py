@@ -8,6 +8,7 @@ from typing import FrozenSet, Tuple, Union
 import numpy as np
 import requests
 from PIL import Image
+from imgdl import download
 
 requests.packages.urllib3.disable_warnings()
 
@@ -42,28 +43,5 @@ class ImageLoader:
                 return
 
             link, (width, height) = self.load_queue.get()
-
-            if width is None or height is None or (width >= self.min_width and height >= self.min_height):
-                self.logger.info(link)
-                try:
-                    response = requests.get(link, headers=self.headers, verify=False, timeout=10)
-                except:
-                    continue
-                if 200 <= response.status_code < 300:
-                    try:
-                        img = Image.open(io.BytesIO(response.content))
-                    except:
-                        continue
-
-                    width, height = img.size
-                    hash_name = hashlib.sha256(np.array(img)).hexdigest()
-
-                    img_path = self.image_dir / (hash_name + ".png")
-
-                    if (
-                        hash_name not in self.skip_files
-                        and not img_path.exists()
-                        and width >= self.min_width
-                        and height >= self.min_height
-                    ):
-                        img.save(img_path, "PNG")
+            download([link], store_path=self.image_dir)
+            

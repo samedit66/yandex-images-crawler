@@ -4,10 +4,19 @@ from multiprocessing import Queue, Value, get_logger
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from tqdm.auto import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 
 class YandexCrawler:
-    def __init__(self, start_link: str, load_queue: Queue, id=0, is_active: Value = Value("i", True)):
+    def __init__(self,
+                 links_count: int,
+                 start_link: str,
+                 load_queue: Queue,
+                 id=0,
+                 is_active: Value = Value("i", True),
+                 ):
+        self.links_count = links_count
         self.start_link = start_link
         self.load_queue = load_queue
         self.id = str(id)
@@ -18,6 +27,8 @@ class YandexCrawler:
         self.logger = get_logger()
         self.logger.addHandler(logging.StreamHandler())
         self.logger.setLevel(logging.INFO)
+
+        self.prog_bar = tqdm(total=self.links_count)
 
     def __get_image_link(self):
         width, height = None, None
@@ -37,20 +48,17 @@ class YandexCrawler:
                     pass
 
         link = self.driver.find_element(By.CLASS_NAME, "MMImage-Preview").get_attribute("src")
-        if "avatars.mds.yandex.net" in link or "yandex-images" in link:
-            time.sleep(5)
-            link = self.driver.find_element(By.CLASS_NAME, "MMImage-Preview").get_attribute("src")
-            if "avatars.mds.yandex.net" in link or "yandex-images" in link:
-                return
-
+        time.sleep(0.1)
         self.load_queue.put((link, (width, height)))
+        self.prog_bar.update(1)
 
     def __next_preview(self):
         try:
             btn = self.driver.find_element(By.CSS_SELECTOR, "button[class*='CircleButton_type_next']")
             btn.click()
         except:
-            self.logger.critical(f"Process #{self.id} can't move to the next image.")
+            with logging_redirect_tqdm():
+                self.logger.critical(f"Process #{self.id} can't move to the next image.")
 
     def run(self):
         self.driver.get(self.start_link)
@@ -63,5 +71,6 @@ class YandexCrawler:
                 self.__get_image_link()
                 self.__next_preview()
             except Exception as e:
-                self.logger.critical(e)
-                time.sleep(10)
+                with logging_redirect_tqdm():
+                    self.logger.critical(e)
+                    time.sleep(10)

@@ -15,8 +15,9 @@ from pathlib import Path
 from typing import FrozenSet, List, Tuple, Union
 
 
-def __start_crawler(start_link: str, load_queue: Queue, id: int, is_active: Value):
+def __start_crawler(links_count: int, start_link: str, load_queue: Queue, id: int, is_active: Value):
     crawler = YandexCrawler(
+        links_count=links_count,
         start_link=start_link,
         load_queue=load_queue,
         id=id,
@@ -67,7 +68,7 @@ def download(
     crawlers = [
         Process(
             target=__start_crawler,
-            args=(links[i], load_queue, i, is_active),
+            args=(image_count, links[i], load_queue, i, is_active),
             daemon=True,
         )
         for i in range(proc_num)
