@@ -1,0 +1,3 @@
+[submodule "imagedownloader"]
+	path = imagedownloader
+	url = https://github.com/felipeam86/imagedownloader.git
