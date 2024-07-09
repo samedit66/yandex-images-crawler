@@ -2,4 +2,3 @@ numpy>=1.25.0
 selenium>=4.15.0
 Pillow>=9.0.0
 requests>=2.30.0
-imgdl>=2.0.1
