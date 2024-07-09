@@ -233,6 +233,7 @@ def download(
     max_wait=config.MAX_WAIT,
     session=requests.Session(),
     force=False,
+    verbose=True,
 ):
     """Asynchronously download images using multiple threads.
 
@@ -254,7 +255,9 @@ def download(
         Maximum wait time between image downloads
     force : bool
         If True force the download even if the files already exists
-
+    verbose : bool
+        If True show the progress bar of downloading
+        
     Returns
     -------
     paths : str | list
@@ -272,4 +275,4 @@ def download(
         session=session,
     )
 
-    return downloader(urls, paths=paths, force=force)
+    return downloader(urls, paths=paths, force=force, verbose=verbose)

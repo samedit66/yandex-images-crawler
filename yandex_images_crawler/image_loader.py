@@ -8,7 +8,8 @@ from typing import FrozenSet, Tuple, Union
 import numpy as np
 import requests
 from PIL import Image
-from imgdl import download
+
+from .imgdl import download
 
 requests.packages.urllib3.disable_warnings()
 
