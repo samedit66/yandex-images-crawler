@@ -1,36 +1,34 @@
-import logging
+from collections import namedtuple
 import time
-from multiprocessing import Queue, Value, get_logger
+from multiprocessing import Queue, Value
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from tqdm.auto import tqdm
-from tqdm.contrib.logging import logging_redirect_tqdm
+
+
+class ReachedEndError(Exception):
+    ...
+
+
+Image = namedtuple('Image', 'link width height')
 
 
 class YandexCrawler:
+
     def __init__(self,
-                 links_count: int,
                  start_link: str,
                  load_queue: Queue,
-                 id=0,
-                 is_active: Value = Value("i", True),
-                 ):
-        self.links_count = links_count
+                 links_counter: Value,
+                 id: int = 0,
+                 ) -> None:
         self.start_link = start_link
         self.load_queue = load_queue
+        self.links_counter = links_counter
         self.id = str(id)
-        self.is_active = is_active
-
         self.driver = webdriver.Firefox()
+        self.started_crawling = False
 
-        self.logger = get_logger()
-        self.logger.addHandler(logging.StreamHandler())
-        self.logger.setLevel(logging.INFO)
-
-        self.prog_bar = tqdm(total=self.links_count)
-
-    def __get_image_link(self):
+    def __get_image_link(self) -> None:
         width, height = None, None
         try:
             width, height = [
@@ -49,28 +47,27 @@ class YandexCrawler:
 
         link = self.driver.find_element(By.CLASS_NAME, "MMImage-Preview").get_attribute("src")
         time.sleep(0.1)
-        self.load_queue.put((link, (width, height)))
-        self.prog_bar.update(1)
+        self.load_queue.put(Image(link=link, width=width, height=height)) 
 
-    def __next_preview(self):
+    def __next_preview(self) -> None:
         try:
             btn = self.driver.find_element(By.CSS_SELECTOR, "button[class*='CircleButton_type_next']")
             btn.click()
         except:
-            with logging_redirect_tqdm():
-                self.logger.critical(f"Process #{self.id} can't move to the next image.")
+            raise ReachedEndError
 
-    def run(self):
-        self.driver.get(self.start_link)
+    def run(self) -> int:
+        if not self.started_crawling:
+            self.started_crawling = True
+            self.driver.get(self.start_link)
+
+        crawled_count = 0
         while True:
-            if not self.is_active.value:
-                self.driver.close()
-                return
-
             try:
                 self.__get_image_link()
                 self.__next_preview()
-            except Exception as e:
-                with logging_redirect_tqdm():
-                    self.logger.critical(e)
-                    time.sleep(10)
+            except ReachedEndError:
+                self.driver.close()
+                break
+
+        return crawled_count

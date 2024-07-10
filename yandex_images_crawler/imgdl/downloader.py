@@ -12,6 +12,7 @@ from tqdm.auto import tqdm
 from .settings import config, get_logger
 from .storage.backend import BaseStorage, resolve_storage_backend
 
+
 logger = get_logger(__name__)
 
 
@@ -51,14 +52,12 @@ class ImageDownloader(object):
         self.max_wait = max_wait
         self.session = requests.Session() if session is None else session
 
-    storage: BaseStorage = resolve_storage_backend(config.STORE_PATH)
-    n_workers: int = config.N_WORKERS
-    timeout: float = config.TIMEOUT
-    min_wait: float = config.MIN_WAIT
-    max_wait: float = config.MAX_WAIT
-    session: requests.Session = requests.Session()
-
-    def __call__(self, urls, paths=None, force=False, verbose=True):
+    def __call__(self,
+                 urls: str | list,
+                 paths: str | list | None = None,
+                 force: bool = False,
+                 verbose: bool = True,
+                 ):
         """Download url or list of urls
 
         Parameters

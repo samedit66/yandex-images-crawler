@@ -48,6 +48,7 @@ setup(
     entry_points={
         "console_scripts": [
             "yandex-images-crawler = yandex_images_crawler:main",
+            "crawl = yandex_images_crawler:main",
         ],
     },
     install_requires=REQUIREMENTS,
