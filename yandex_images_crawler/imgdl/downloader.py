@@ -15,7 +15,6 @@ from .storage.backend import BaseStorage, resolve_storage_backend
 logger = get_logger(__name__)
 
 
-@dataclass
 class ImageDownloader(object):
     """Image downloader that converts to common format.
 
@@ -36,6 +35,21 @@ class ImageDownloader(object):
     session : requests.Session
         requests session
     """
+
+    def __init__(self,
+                 storage: BaseStorage | None = None,
+                 n_workers: int = config.N_WORKERS,
+                 timeout: float = config.TIMEOUT,
+                 min_wait: float = config.MIN_WAIT,
+                 max_wait: float = config.MAX_WAIT,
+                 session: requests.Session | None = None,
+                 ):
+        self.storage = resolve_storage_backend(config.STORE_PATH) if storage is None else storage
+        self.n_workers = n_workers
+        self.timeout = timeout
+        self.min_wait = min_wait
+        self.max_wait = max_wait
+        self.session = requests.Session() if session is None else session
 
     storage: BaseStorage = resolve_storage_backend(config.STORE_PATH)
     n_workers: int = config.N_WORKERS
