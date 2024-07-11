@@ -1,23 +1,20 @@
 try:
-    from .count_checker import CountChecker
     from .image_loader import ImageLoader
     from .yandex_crawler import YandexCrawler
 except ImportError:
     from yandex_crawler import YandexCrawler
     from image_loader import ImageLoader
-    from count_checker import CountChecker
 
 import argparse
 import logging
 import os
 from multiprocessing import Process, Queue, Value
 from pathlib import Path
-from typing import FrozenSet, List, Tuple, Union
+from typing import List, Union
 
 
-def __start_crawler(links_count: int, start_link: str, load_queue: Queue, id: int, is_active: Value):
+def __start_crawler(start_link: str, load_queue: Queue, id: int, is_active):
     crawler = YandexCrawler(
-        links_count=links_count,
         start_link=start_link,
         load_queue=load_queue,
         id=id,
@@ -27,37 +24,24 @@ def __start_crawler(links_count: int, start_link: str, load_queue: Queue, id: in
 
 
 def __start_loader(
+    images_count: int,
     load_queue: Queue,
-    image_size: Tuple[int, int],
     image_dir: Union[str, Path],
-    skip_files: FrozenSet[str],
-    is_active: Value,
+    is_active,
 ):
     crawler = ImageLoader(
+        images_count=images_count,
         load_queue=load_queue,
-        image_size=image_size,
         image_dir=image_dir,
-        skip_files=skip_files,
         is_active=is_active,
     )
     crawler.run()
 
 
-def __start_checker(image_dir: Union[Path, str], image_count: int, is_active: Value):
-    checker = CountChecker(
-        image_dir=image_dir,
-        image_count=image_count,
-        is_active=is_active,
-    )
-    checker.run()
-
-
 def download(
     links: List[str],
-    image_size: Tuple[int, int],
     image_count: int,
     image_dir: Union[str, Path],
-    skip_files: FrozenSet[str],
 ):
     proc_num = len(links)
 
@@ -68,7 +52,7 @@ def download(
     crawlers = [
         Process(
             target=__start_crawler,
-            args=(image_count, links[i], load_queue, i, is_active),
+            args=(links[i], load_queue, i, is_active),
             daemon=True,
         )
         for i in range(proc_num)
@@ -77,22 +61,15 @@ def download(
     loaders = [
         Process(
             target=__start_loader,
-            args=(load_queue, image_size, image_dir, skip_files, is_active),
+            args=(image_count, load_queue, image_dir, is_active),
             daemon=True,
         )
         for _ in range(proc_num * 2)
     ]
 
-    checker = Process(
-        target=__start_checker,
-        args=(image_dir, image_count, is_active),
-        daemon=True,
-    )
-
     processes = []
     processes.extend(crawlers)
     processes.extend(loaders)
-    processes.append(checker)
 
     for process in processes:
         process.start()
@@ -201,7 +178,7 @@ def __parse_args():
 
 def main():
     args = __parse_args()
-    download(args.links, args.size, args.count, args.image_dir, args.skip_files)
+    download(args.links, args.count, args.image_dir)
 
 
 if __name__ == "__main__":

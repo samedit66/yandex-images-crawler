@@ -8,6 +8,8 @@ from typing import FrozenSet, Tuple, Union
 import numpy as np
 import requests
 from PIL import Image
+from tqdm.auto import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 from .imgdl import download
 
@@ -15,34 +17,61 @@ requests.packages.urllib3.disable_warnings()
 
 
 class ImageLoader:
-    def __init__(
-        self,
-        load_queue: Queue,
-        image_size: Tuple[int, int],
-        image_dir: Union[str, Path],
-        skip_files: FrozenSet[str] = frozenset(),
-        is_active: Value = Value("i", True),
-    ):
-        self.load_queue = load_queue
-        self.min_width, self.min_height = image_size
-        self.image_dir = Path(image_dir)
-        self.skip_files = skip_files
-        self.is_active = is_active
 
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; rv:91.0) Gecko/20100101 Firefox/91.0",
-            "Referer": "https://yandex.com/",
-        }
+    def __init__(self,
+                 images_count: int,
+                 load_queue: Queue,
+                 image_dir: Union[str, Path],
+                 is_active,
+                 chunk_size: int = 1,
+                 ) -> None:
+        self.images_count = images_count
+        self.load_queue = load_queue
+        self.image_dir = Path(image_dir)
+        self.is_active = is_active
+        self.chunk_size = chunk_size
+
+        self.total_downloaded_count = 0
 
         self.logger = get_logger()
         self.logger.addHandler(logging.StreamHandler())
         self.logger.setLevel(logging.INFO)
 
-    def run(self):
+        self.progress_bar = tqdm(total=images_count)
+
+    def __log(self, msg: str):
+        with logging_redirect_tqdm():
+            self.logger.info(msg)
+
+    def __download_images(self, count: int) -> None:
+        images = []
+        for _ in range(count):
+            image = self.load_queue.get()
+            images.append(image.link)
+
+        paths = download(images, store_path=self.image_dir, verbose=False)
+        downloaded_count = len([path for path in paths if path is not None])
+        
+        if downloaded_count != count:
+            self.__log(f"Failed to load {count} images; loaded count: {downloaded_count}")
+        
+        self.progress_bar.update(downloaded_count)
+        self.total_downloaded_count += downloaded_count
+
+    def run(self) -> None:
         while True:
             if not self.is_active.value:
+                if self.load_queue.qsize() > 0:
+                    self.__download_images(self.load_queue.qsize())
+                    self.__log(f"Downloaded {self.total_downloaded_count} image{'s' if self.images_count > 1 else ''}")
+                self.progress_bar.close()
                 return
 
-            link, (width, height) = self.load_queue.get()
-            download([link], store_path=self.image_dir)
+            if self.load_queue.qsize() >= self.chunk_size:
+                self.__download_images(self.chunk_size)
             
+            if self.total_downloaded_count == self.images_count:
+                self.__log(f"Downloaded all {self.images_count} image{'s' if self.images_count > 1 else ''}")
+                self.is_active.value = False
+                self.progress_bar.close()
+                return

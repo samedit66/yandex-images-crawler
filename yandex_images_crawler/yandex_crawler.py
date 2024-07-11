@@ -1,6 +1,6 @@
 from collections import namedtuple
 import time
-from multiprocessing import Queue, Value
+from multiprocessing import Queue
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -18,15 +18,14 @@ class YandexCrawler:
     def __init__(self,
                  start_link: str,
                  load_queue: Queue,
-                 links_counter: Value,
+                 is_active,
                  id: int = 0,
                  ) -> None:
         self.start_link = start_link
         self.load_queue = load_queue
-        self.links_counter = links_counter
+        self.is_active = is_active
         self.id = str(id)
         self.driver = webdriver.Firefox()
-        self.started_crawling = False
 
     def __get_image_link(self) -> None:
         width, height = None, None
@@ -56,18 +55,19 @@ class YandexCrawler:
         except:
             raise ReachedEndError
 
-    def run(self) -> int:
-        if not self.started_crawling:
-            self.started_crawling = True
-            self.driver.get(self.start_link)
+    def run(self) -> None:
+        self.driver.get(self.start_link)
 
-        crawled_count = 0
         while True:
+            if not self.is_active.value:
+                self.driver.close()
+                break
+
             try:
                 self.__get_image_link()
                 self.__next_preview()
             except ReachedEndError:
                 self.driver.close()
+                self.is_active.value = False
                 break
-
-        return crawled_count
+    
