@@ -49,9 +49,9 @@ class ImageLoader:
             image = self.load_queue.get()
             images.append(image.link)
 
-        paths = download(images, store_path=self.image_dir, verbose=False)
-        downloaded_count = len([path for path in paths if path is not None])
-        
+        result = download(images, store_path=self.image_dir)
+        downloaded_count = len(result.downloaded)
+
         if downloaded_count != count:
             self.__log(f"Failed to load {count} images; loaded count: {downloaded_count}")
         

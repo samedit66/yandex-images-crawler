@@ -19,6 +19,8 @@ class YandexCrawler:
                  start_link: str,
                  load_queue: Queue,
                  is_active,
+                 #min_wait: float,
+                 #max_wait: float,
                  id: int = 0,
                  ) -> None:
         self.start_link = start_link
@@ -27,7 +29,7 @@ class YandexCrawler:
         self.id = str(id)
         self.driver = webdriver.Firefox()
 
-    def __get_image_link(self) -> None:
+    def _get_image_link(self) -> None:
         width, height = None, None
         try:
             width, height = [
@@ -48,7 +50,7 @@ class YandexCrawler:
         time.sleep(0.1)
         self.load_queue.put(Image(link=link, width=width, height=height)) 
 
-    def __next_preview(self) -> None:
+    def _next_preview(self) -> None:
         try:
             btn = self.driver.find_element(By.CSS_SELECTOR, "button[class*='CircleButton_type_next']")
             btn.click()
@@ -64,10 +66,10 @@ class YandexCrawler:
                 break
 
             try:
-                self.__get_image_link()
-                self.__next_preview()
+                self._get_image_link()
+                self._next_preview()
             except ReachedEndError:
-                self.driver.close()
-                self.is_active.value = False
                 break
+            finally:
+                self.driver.close()
     

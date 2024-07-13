@@ -4,16 +4,22 @@ from concurrent import futures
 from dataclasses import dataclass
 from io import BytesIO
 from time import sleep
+from typing import Iterable
+from pathlib import Path
 
 import requests
 from PIL import Image
-from tqdm.auto import tqdm
 
-from .settings import config, get_logger
+from .settings import config
 from .storage.backend import BaseStorage, resolve_storage_backend
 
 
-logger = get_logger(__name__)
+@dataclass(frozen=True)
+class DownloadingResult:
+    downloaded: list[Path]
+    '''List of paths of downloaded images'''
+    failed: list[str]
+    '''List of urls of failed to download images'''
 
 
 class ImageDownloader(object):
@@ -44,7 +50,7 @@ class ImageDownloader(object):
                  min_wait: float = config.MIN_WAIT,
                  max_wait: float = config.MAX_WAIT,
                  session: requests.Session | None = None,
-                 ):
+                 ) -> None:
         self.storage = resolve_storage_backend(config.STORE_PATH) if storage is None else storage
         self.n_workers = n_workers
         self.timeout = timeout
@@ -53,11 +59,10 @@ class ImageDownloader(object):
         self.session = requests.Session() if session is None else session
 
     def __call__(self,
-                 urls: str | list,
+                 urls: str | Iterable[str],
                  paths: str | list | None = None,
                  force: bool = False,
-                 verbose: bool = True,
-                 ):
+                 ) -> DownloadingResult:
         """Download url or list of urls
 
         Parameters
@@ -76,44 +81,35 @@ class ImageDownloader(object):
 
         Returns
         -------
-        paths : str | list
-            If url is a str, path where the image was stored.
-            If url is iterable the list of image paths is returned. If
-            image failed to download, None is given instead of image path
+        downloading_result: DownloadingResult
+            Object with information about downloaded images and failed to download ones
         """
-
-        if not isinstance(urls, (str, Iterable)):
-            raise ValueError("urls should be str or iterable")
-
-        if isinstance(urls, str):
-            return str(self._download_image(urls, paths, force=force))
-
         urls = list(urls)
         if paths is None:
             paths = [None] * len(urls)
 
         with futures.ThreadPoolExecutor(max_workers=self.n_workers) as executor:
-            n_fail = 0
             future_to_url = {
-                executor.submit(self._download_image, url, path, force): (i, url)
-                for i, (url, path) in enumerate(zip(urls, paths))
+                executor.submit(self._download_image, url, path, force): url
+                for url, path in zip(urls, paths)
             }
+
             total = len(future_to_url)
             paths = [None] * total
             
-            it = futures.as_completed(future_to_url)
-            if verbose:
-                it = tqdm(it, total=total, miniters=1)
-            for future in it:
-                i, url = future_to_url[future]
+            downloaded = []
+            failed = []
+            for future in futures.as_completed(future_to_url):
+                url = future_to_url[future]
                 if future.exception() is None:
-                    paths[i] = str(future.result())
+                    path = Path(str(future.result()))
+                    downloaded.append(path)
                 else:
-                    n_fail += 1
+                    failed.append(url)
 
-            logger.warning(f"{n_fail} images failed to download")
-
-        return paths
+        return DownloadingResult(downloaded=downloaded,
+                                 failed=failed,
+                                 )
 
     def _download_image(self, url, path=None, force=False):
         """Download image and convert to jpeg rgb mode.
@@ -146,13 +142,13 @@ class ImageDownloader(object):
                 "timeout": self.timeout,
             },
         }
+
         path = path or self.storage.get_filepath(url)
         if self.storage.exists(path) and not force:
             metadata.update({"success": True, "filepath": path})
-            logger.info("On cache", extra=metadata)
             return path
+        
         try:
-
             response = self.session.get(url, timeout=self.timeout)
             response.raise_for_status()
             orig_img = Image.open(BytesIO(response.content))
@@ -170,7 +166,6 @@ class ImageDownloader(object):
                 }
             )
 
-            logger.info("Downloaded", extra=metadata)
             sleep(random.uniform(self.min_wait, self.max_wait))
         except Exception as e:
             metadata.update(
@@ -191,16 +186,16 @@ class ImageDownloader(object):
                     }
                 )
 
-            logger.error("Failed", extra=metadata)
             raise e
+        
         return path
 
-    def get(self, url):
+    def get(self, url: str) -> Image:
         response = self.session.get(url, timeout=self.timeout)
         return Image.open(BytesIO(response.content))
 
     @staticmethod
-    def convert_image(img):
+    def convert_image(img: Image) -> Image:
         """Convert images to JPG, RGB mode and given size if any.
 
         Parameters
@@ -229,25 +224,23 @@ class ImageDownloader(object):
         return img
 
     @staticmethod
-    def resize_image(img, size):
+    def resize_image(img, size: tuple[int, int]) -> Image:
         """Resize an image to a given size."""
         img = img.copy()
         img.thumbnail(size, Image.ANTIALIAS)
         return img
 
 
-def download(
-    urls,
-    paths=None,
-    store_path=config.STORE_PATH,
-    n_workers=config.N_WORKERS,
-    timeout=config.TIMEOUT,
-    min_wait=config.MIN_WAIT,
-    max_wait=config.MAX_WAIT,
-    session=requests.Session(),
-    force=False,
-    verbose=True,
-):
+def download(urls: list[str],
+             paths: list | None = None,
+             store_path: str | Path = config.STORE_PATH,
+             n_workers: int = config.N_WORKERS,
+             timeout: float = config.TIMEOUT,
+             min_wait: float = config.MIN_WAIT,
+             max_wait: float = config.MAX_WAIT,
+             session: requests.Session = requests.Session(),
+             force: bool = False,
+             ) -> DownloadingResult:
     """Asynchronously download images using multiple threads.
 
     Parameters
@@ -268,17 +261,12 @@ def download(
         Maximum wait time between image downloads
     force : bool
         If True force the download even if the files already exists
-    verbose : bool
-        If True show the progress bar of downloading
         
     Returns
     -------
-    paths : str | list
-        If url is a str, path where the image was stored.
-        If url is iterable the list of image paths is returned. If
-        image failed to download, None is given instead of image path
+    downloading_result: DownloadingResult
+        Object with information about downloaded images and failed to download ones
     """
-
     downloader = ImageDownloader(
         storage=resolve_storage_backend(store_path=store_path),
         n_workers=n_workers,
@@ -288,4 +276,4 @@ def download(
         session=session,
     )
 
-    return downloader(urls, paths=paths, force=force, verbose=verbose)
+    return downloader(urls, paths=paths, force=force)

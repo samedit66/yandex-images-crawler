@@ -64,7 +64,7 @@ def download(
             args=(image_count, load_queue, image_dir, is_active),
             daemon=True,
         )
-        for _ in range(proc_num * 2)
+        for _ in range(proc_num * 1)
     ]
 
     processes = []

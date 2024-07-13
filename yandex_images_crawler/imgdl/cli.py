@@ -11,6 +11,8 @@ def parse(args=None):
         description="Bulk image downloader from a list of urls",
     )
 
+    parser.add_argument('-l', '--link', type=str, help='Link of an image to download')
+
     parser.add_argument(
         "urls", type=str, help="Text file with the list of urls to be downloaded"
     )
